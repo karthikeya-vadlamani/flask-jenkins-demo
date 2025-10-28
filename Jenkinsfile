@@ -1,33 +1,46 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKERHUB_USER = 'killuazoldyckk'
+        DOCKERHUB_PASS = credentials('dockerhub-creds')
+        IMAGE_NAME = "killuazoldyckk/mypythonapp"
+    }
+
+    triggers {
+        pollSCM('* * * * *')  // check GitHub every minute for new commits
+    }
+
     stages {
-        stage('Verify App Folder') {
+        stage('Checkout') {
             steps {
-                echo 'Checking /app contents...'
-                sh 'ls -la /app || echo "Failed to list /app"'
+                git branch: 'main', credentialsId: 'github-creds', url: 'https://github.com/your-username/flask-jenkins-demo.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo 'Building Docker image...'
-                sh 'cd /app && docker build -t mypythonapp:latest .'
+                sh 'docker build -t $IMAGE_NAME:latest .'
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Push to Docker Hub') {
             steps {
-                echo 'Running container...'
-                sh 'docker run -d -p 5000:5000 --name mypythonapp mypythonapp:latest || echo "Container already running"'
+                sh '''
+                echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+                docker push $IMAGE_NAME:latest
+                docker logout
+                '''
             }
         }
-    }
 
-    post {
-        always {
-            echo 'Cleaning up old containers...'
-            sh 'docker rm -f mypythonapp || true'
+        stage('Run Container') {
+            steps {
+                sh '''
+                docker rm -f mypythonapp || true
+                docker run -d -p 5000:5000 --name mypythonapp $IMAGE_NAME:latest
+                '''
+            }
         }
     }
 }
